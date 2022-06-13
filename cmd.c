@@ -8,6 +8,10 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <dirent.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#define KBLU  "\x1B[34m"
+#define KRED  "\x1B[31m"
 /* A process is a single process.  */
 typedef struct process
 {
@@ -384,7 +388,7 @@ void launch_job (job *j, int foreground)
       infile = mypipe[0];
     }
 
-  format_job_info (j, "launched");
+  //format_job_info (j, "launched");
 
   if (!shell_is_interactive)
     wait_for_job (j);
@@ -433,7 +437,7 @@ void cd(char* path)
   return;
 }
 
-void init_process(job* j, char* cmd)
+process* init_process(job* j, char* cmd)
 {
   process *p = (process*) malloc(sizeof(process));
   p->next = NULL;
@@ -460,17 +464,19 @@ void init_process(job* j, char* cmd)
   else
   {
     p->argv = cmds;
-    launch_process(p,j->pgid,STDIN_FILENO,STDOUT_FILENO,STDERR_FILENO,1);
+    return p;
   }
 }
 
-void init_job(char* cmd)
+job* init_job(char* cmd)
 {
   job *j = (job*) malloc(sizeof(job));
   j->next = NULL;
   j->stdin = STDIN_FILENO; j->stdout = STDOUT_FILENO; j->stderr = STDERR_FILENO;
   j->command = cmd;
-  init_process(j,cmd);
+  process *p = init_process(j,cmd);
+  j->first_process = p;
+  return j;
 }
 
 int main(int argc, char** argv)
@@ -479,11 +485,65 @@ int main(int argc, char** argv)
   while(1)
   {
     char cwd[100];
-    if(getcwd(cwd,sizeof(cwd)) != NULL) printf("%s$ ",cwd);
+    if(getcwd(cwd,sizeof(cwd)) != NULL) 
+    {
+      char hostname[1024];
+      gethostname(hostname, 1024);
+      printf(KRED"%s@%s",getenv("USER"),hostname);
+      printf(":");
+      printf(KBLU"~%s$ ",cwd);
+    }
+    //char** new = (char**) malloc((argc - 1) * sizeof(char*));
     char* input = (char*) malloc(100 *sizeof(char));
+    char* s = (char*) malloc(100 * sizeof(char));
+    char* start = (char*) malloc(strlen(s) * sizeof(char));
     gets(input);
-    //scanf("%s",input);
-    init_job(input);
+    strcpy(s,input);
+    int in = 0;
+    int out = 0;
+    char* buf = (char*) malloc(100 * sizeof(char));
+    while(*s)
+    {
+      start[strlen(start)] = *s;
+      if(*s == '<')
+      {
+        in = 1;
+        break;
+      }
+      else if(*s == '>')
+      {
+        out = 1;
+        break;
+      }
+      s++;
+    }
+    start[strlen(start)- 1 ] = '\0';
+    if(start[strlen(start)- 1 ] == ' ') start[strlen(start)- 1 ] = '\0';
+    if(in || out) s++;
+    if(s[0] == ' ') s++;
+    if(s[0] > 40 && s[0] < 127)
+    {
+      if(in)
+      {
+        int opened_file = open(s,0,O_RDONLY);
+        if(opened_file)
+        {
+          read(opened_file,buf,sizeof(buf));
+        }
+        close(opened_file);
+      }
+    }
+    if(in == 0 && out == 0) launch_job(init_job(input),1);
+    else if(in)
+    {
+      strcat(start," ");
+      strcat(start,buf);
+      printf("%s\n",buf);
+      launch_job(init_job(start),1);
+    }
+    free(buf);
+    free(input);
+    free(start);
   }
   return 0;
 }
