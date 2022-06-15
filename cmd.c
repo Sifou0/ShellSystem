@@ -441,6 +441,41 @@ process* init_process(job* j, char* cmd)
 {
   process *p = (process*) malloc(sizeof(process));
   p->next = NULL;
+  char* s = (char*) malloc(100 * sizeof(char));
+  strcpy(s,cmd);
+  int in = 0;
+  int out = 0;
+  char* buf = (char*) malloc(100 * sizeof(char));
+  while(*s)
+    {
+      if(*s == '<')
+      {
+        in = 1;
+        break;
+      }
+      else if(*s == '>')
+      {
+        out = 1;
+        break;
+      }
+      s++;
+    }
+    if(in || out) s++;
+    if(s[0] == ' ') s++;
+    if(s[0] > 40 && s[0] < 127)
+    {
+      if(in)
+      {
+        int opened_file = open(s,O_RDONLY);
+        j->stdin = opened_file;
+      }
+      else if(out)
+      {
+        int opened_file = open(s,O_WRONLY|O_CREAT,0644);
+        j->stdout = opened_file;
+
+      }
+    }
   int n = 1;
   for(int i = 0 ; i < strlen(cmd) ; ++i)
   {
@@ -449,21 +484,34 @@ process* init_process(job* j, char* cmd)
       n++;
     }
   }
-  char** cmds = (char**) malloc(n * sizeof(char*));
+  char** cmds = (char**) malloc(n*sizeof(char*));
   char* delim = " ";
   char *ptr = strtok(cmd, delim);
   int i = 0;
   while(ptr != NULL)
-	{
+  {
     cmds[i] = ptr;
-		ptr = strtok(NULL, delim);
+    ptr = strtok(NULL, delim);
     i++;
-	}
+  }
   if(strcmp(cmds[0],"cd") == 0) cd(cmds[1]);
   else if(strcmp(cmd,"exit") == 0) exit(0);
   else
   {
-    p->argv = cmds;
+    if(in)
+    {
+      char** inout = (char**) malloc(sizeof(char*));
+      inout[0] = cmds[0];
+      p->argv = inout;
+    }
+    else if(out)
+    {
+      char** inout = (char**) malloc(2 * sizeof(char*));
+      inout[0] = cmds[0];
+      inout[1] = cmds[1];
+      p->argv = inout;
+    }
+    else p->argv = cmds;
     return p;
   }
 }
@@ -494,56 +542,9 @@ int main(int argc, char** argv)
       printf(KBLU"~%s$ ",cwd);
     }
     //char** new = (char**) malloc((argc - 1) * sizeof(char*));
-    char* input = (char*) malloc(100 *sizeof(char));
-    char* s = (char*) malloc(100 * sizeof(char));
-    char* start = (char*) malloc(strlen(s) * sizeof(char));
+    char input[100];
     gets(input);
-    strcpy(s,input);
-    int in = 0;
-    int out = 0;
-    char* buf = (char*) malloc(100 * sizeof(char));
-    while(*s)
-    {
-      start[strlen(start)] = *s;
-      if(*s == '<')
-      {
-        in = 1;
-        break;
-      }
-      else if(*s == '>')
-      {
-        out = 1;
-        break;
-      }
-      s++;
-    }
-    start[strlen(start)- 1 ] = '\0';
-    if(start[strlen(start)- 1 ] == ' ') start[strlen(start)- 1 ] = '\0';
-    if(in || out) s++;
-    if(s[0] == ' ') s++;
-    if(s[0] > 40 && s[0] < 127)
-    {
-      if(in)
-      {
-        int opened_file = open(s,0,O_RDONLY);
-        if(opened_file)
-        {
-          read(opened_file,buf,sizeof(buf));
-        }
-        close(opened_file);
-      }
-    }
-    if(in == 0 && out == 0) launch_job(init_job(input),1);
-    else if(in)
-    {
-      strcat(start," ");
-      strcat(start,buf);
-      printf("%s\n",buf);
-      launch_job(init_job(start),1);
-    }
-    free(buf);
-    free(input);
-    free(start);
+    launch_job(init_job(input),1);
   }
   return 0;
 }
