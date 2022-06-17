@@ -10,6 +10,8 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include "copie.h"
+
 #define KBLU  "\x1B[34m"
 #define KRED  "\x1B[31m"
 /* A process is a single process.  */
@@ -471,7 +473,7 @@ process* init_process(job* j, char* cmd)
       }
       else if(out)
       {
-        int opened_file = open(s,O_WRONLY|O_CREAT,0644);
+        int opened_file = open(s,O_WRONLY|O_CREAT|O_TRUNC,0644);
         j->stdout = opened_file;
 
       }
@@ -496,6 +498,7 @@ process* init_process(job* j, char* cmd)
   }
   if(strcmp(cmds[0],"cd") == 0) cd(cmds[1]);
   else if(strcmp(cmd,"exit") == 0) exit(0);
+  else if(strcmp(cmd,"cp") == 0) copie(cmds[1],cmds[2]);
   else
   {
     if(in)
@@ -527,6 +530,22 @@ job* init_job(char* cmd)
   return j;
 }
 
+int multipleProcess(char* cmd)
+{
+  int res = 1;
+  while(*cmd)
+  {
+    if(*cmd == '|') res++;
+  }
+  return res;
+}
+
+int isBG(char* cmd)
+{
+  if(cmd[strlen(cmd)-1] == '&') return 0;
+  else return 1;
+}
+
 int main(int argc, char** argv)
 {
   init_shell();
@@ -542,9 +561,11 @@ int main(int argc, char** argv)
       printf(KBLU"~%s$ ",cwd);
     }
     //char** new = (char**) malloc((argc - 1) * sizeof(char*));
-    char input[100];
-    gets(input);
-    launch_job(init_job(input),1);
+    char* input = (char*) malloc(100*sizeof(char));
+    fgets(input,100,stdin);
+    int bg = isBG(input);
+    input[strlen(input)-1] = '\0';
+    launch_job(init_job(input),bg);
   }
   return 0;
 }
